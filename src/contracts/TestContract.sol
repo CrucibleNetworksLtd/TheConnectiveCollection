@@ -5,12 +5,14 @@ import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "hardhat/console.sol";
 
 contract TestContract is ERC721URIStorage, Ownable {
     bytes32 public freeMerkleRoot;
     bytes32 public paidMerkleRoot;
     uint256 public mintingState = 0;
-    uint256 public mintPrice = 0.1 ether; // Set the mint price for paid minting
+    uint256 public whitelistMintPrice = 0.02 ether;
+    uint256 public mintPrice = 0.03 ether;
     string private baseTokenURI;
     bool public mintingIsActive = false;
     mapping(address => bool) public hasMintedFree;
@@ -30,6 +32,10 @@ contract TestContract is ERC721URIStorage, Ownable {
         paidMerkleRoot = _merkleRoot;
     }
 
+    function setWhitelistMintPrice(uint256 _price) external onlyOwner {
+        whitelistMintPrice = _price;
+    }
+
     function setMintPrice(uint256 _price) external onlyOwner {
         mintPrice = _price;
     }
@@ -42,27 +48,31 @@ contract TestContract is ERC721URIStorage, Ownable {
         mintingIsActive = !mintingIsActive;
     }
 
-    function mint(bytes32[] calldata merkleProof) external payable {
+    function mint(uint256 amount, bytes32[] calldata merkleProof) external payable {
         require(mintingIsActive, "Minting is not active");
+        require(amount > 0, "Must mint at least one token");
 
         bytes32 leaf = keccak256(abi.encodePacked(msg.sender));
 
         if (mintingState == 0) {
-            require(!hasMintedFree[msg.sender], "Already minted");
+            require(amount == 1, "Can only mint 1 token in Stage 0");
+            require(!hasMintedFree[msg.sender], "Already minted in Stage 0");
             require(MerkleProof.verify(merkleProof, freeMerkleRoot, leaf), "Invalid proof for free minting");
             hasMintedFree[msg.sender] = true;
         } else if (mintingState == 1) {
             require(MerkleProof.verify(merkleProof, paidMerkleRoot, leaf), "Invalid proof for paid minting");
-            require(msg.value >= mintPrice, "Insufficient funds for paid minting");
+            require(msg.value >= whitelistMintPrice * amount, "Insufficient funds for paid minting");
         } else if (mintingState == 2) {
-            require(msg.value >= mintPrice, "Insufficient funds for public minting");
+            require(msg.value >= mintPrice * amount, "Insufficient funds for public minting");
         } else {
             revert("Invalid minting state");
         }
 
-        uint256 tokenId = totalSupply() + 1;
-        _mint(msg.sender, tokenId);
-        // _setTokenURI(tokenId, string(abi.encodePacked(baseTokenURI, Strings.toString(tokenId), ".json")));
+        for (uint256 i = 0; i < amount; i++) {
+            uint256 tokenId = totalSupply() + 1;
+            _mint(msg.sender, tokenId);
+            _setTokenURI(tokenId, string(abi.encodePacked(baseTokenURI, Strings.toString(tokenId), ".json")));
+        }
     }
 
     function withdraw() external onlyOwner {

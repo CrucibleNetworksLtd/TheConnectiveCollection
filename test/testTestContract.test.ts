@@ -29,7 +29,7 @@ const generateMerkleTree = (addresses: string[]) => {
 };
 
 describe('TestContract', function () {
-  it('can mint for free (Stage 0)', async function () {
+  it('can mint 1 token for free (Stage 0)', async function () {
     const {users, TestContract} = await setup();
 
     const freeWhitelist = [users[0].address];
@@ -43,7 +43,7 @@ describe('TestContract', function () {
     await TestContract.setMintingState(0);
     await TestContract.toggleMintingIsActive();
 
-    await expect(users[0].TestContract.mint(proof, {value: 0}))
+    await expect(users[0].TestContract.mint(1, proof, {value: 0}))
       .to.emit(TestContract, 'Transfer')
       .withArgs(
         '0x0000000000000000000000000000000000000000',
@@ -58,11 +58,16 @@ describe('TestContract', function () {
       keccak256(users[1].address)
     );
     await expect(
-      users[1].TestContract.mint(invalidProof, {value: 0})
+      users[1].TestContract.mint(1, invalidProof, {value: 0})
     ).to.be.revertedWith('Invalid proof for free minting');
+
+    // Test that a user cannot mint more than 1 token in Stage 0
+    await expect(
+      users[0].TestContract.mint(2, proof, {value: 0})
+    ).to.be.revertedWith('Can only mint 1 token in Stage 0');
   });
 
-  it('can mint for a price (Stage 1)', async function () {
+  it('can mint multiple tokens for a price (Stage 1)', async function () {
     const {users, TestContract} = await setup();
 
     const paidWhitelist = [users[1].address];
@@ -76,43 +81,86 @@ describe('TestContract', function () {
     await TestContract.setMintingState(1);
     await TestContract.toggleMintingIsActive();
 
-    const mintPrice = ethers.utils.parseEther('0.1');
-    await expect(users[1].TestContract.mint(proof, {value: mintPrice}))
+    const mintPrice = ethers.utils.parseEther('0.02');
+    const amountToMint = 3;
+    const totalPrice = mintPrice.mul(amountToMint);
+
+    await expect(
+      users[1].TestContract.mint(amountToMint, proof, {value: totalPrice})
+    )
       .to.emit(TestContract, 'Transfer')
       .withArgs(
         '0x0000000000000000000000000000000000000000',
         users[1].address,
         1
+      )
+      .and.to.emit(TestContract, 'Transfer')
+      .withArgs(
+        '0x0000000000000000000000000000000000000000',
+        users[1].address,
+        2
+      )
+      .and.to.emit(TestContract, 'Transfer')
+      .withArgs(
+        '0x0000000000000000000000000000000000000000',
+        users[1].address,
+        3
       );
 
-    console.log('Owner of tokenId 2 is: ' + (await TestContract.ownerOf(1)));
+    console.log(
+      'Owner of tokenIds 1, 2, 3 is: ' +
+        (await TestContract.ownerOf(1)) +
+        ', ' +
+        (await TestContract.ownerOf(2)) +
+        ', ' +
+        (await TestContract.ownerOf(3))
+    );
 
     // Test that a user not on the paid whitelist cannot mint
     const invalidProof = paidMerkleTree.getHexProof(
       keccak256(users[0].address)
     );
     await expect(
-      users[0].TestContract.mint(invalidProof, {value: mintPrice})
+      users[0].TestContract.mint(amountToMint, invalidProof, {
+        value: totalPrice,
+      })
     ).to.be.revertedWith('Invalid proof for paid minting');
   });
 
-  it('anyone can mint for a price (Stage 2)', async function () {
+  it('anyone can mint multiple tokens for a price (Stage 2)', async function () {
     const {users, TestContract} = await setup();
 
     await TestContract.setMintingState(2);
     await TestContract.toggleMintingIsActive();
 
     const mintPrice = ethers.utils.parseEther('0.1');
-    await expect(users[2].TestContract.mint([], {value: mintPrice}))
+    const amountToMint = 2;
+    const totalPrice = mintPrice.mul(amountToMint);
+
+    await expect(
+      users[2].TestContract.mint(amountToMint, [], {value: totalPrice})
+    )
       .to.emit(TestContract, 'Transfer')
       .withArgs(
         '0x0000000000000000000000000000000000000000',
         users[2].address,
         1
+      )
+      .and.to.emit(TestContract, 'Transfer')
+      .withArgs(
+        '0x0000000000000000000000000000000000000000',
+        users[2].address,
+        2
       );
 
-    console.log('Owner of tokenId 1 is: ' + (await TestContract.ownerOf(1)));
+    console.log(
+      'Owner of tokenIds 1, 2 is: ' +
+        (await TestContract.ownerOf(1)) +
+        ', ' +
+        (await TestContract.ownerOf(2))
+    );
   });
+
   it('only the owner can withdraw funds', async function () {
     const {users, TestContract} = await setup();
 
@@ -123,7 +171,10 @@ describe('TestContract', function () {
     await TestContract.toggleMintingIsActive();
 
     const mintPrice = ethers.utils.parseEther('0.1');
-    await users[2].TestContract.mint([], {value: mintPrice});
+    const amountToMint = 1;
+    const totalPrice = mintPrice.mul(amountToMint);
+
+    await users[2].TestContract.mint(amountToMint, [], {value: totalPrice});
 
     const ownerBalanceBefore = await ethers.provider.getBalance(
       deployer.address
@@ -144,7 +195,9 @@ describe('TestContract', function () {
     );
 
     // Use BigNumber arithmetic for comparison
-    const expectedBalanceAfter = ownerBalanceBefore.add(mintPrice).sub(gasUsed);
+    const expectedBalanceAfter = ownerBalanceBefore
+      .add(totalPrice)
+      .sub(gasUsed);
 
     // Ensure the balances are equal
     expect(ownerBalanceAfter).to.equal(expectedBalanceAfter);
