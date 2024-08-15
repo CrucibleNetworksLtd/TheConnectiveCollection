@@ -202,4 +202,27 @@ describe('TestContract', function () {
     // Ensure the balances are equal
     expect(ownerBalanceAfter).to.equal(expectedBalanceAfter);
   });
+
+  it('can set base URI and verify tokenURI', async function () {
+    const {users, TestContract} = await setup();
+
+    // Set base URI
+    const baseURI = 'https://example.com/metadata/';
+    await TestContract.setBaseURI(baseURI);
+
+    // Mint a token to check the tokenURI
+    await TestContract.setMintingState(2);
+    await TestContract.toggleMintingIsActive();
+
+    const mintPrice = ethers.utils.parseEther('0.1');
+    await users[2].TestContract.mint(1, [], {value: mintPrice});
+
+    // Verify the tokenURI
+    const tokenId = 1;
+    const expectedTokenURI = `${baseURI}${tokenId}.json`;
+    const actualTokenURI = await TestContract.tokenURI(tokenId);
+    expect(actualTokenURI).to.equal(expectedTokenURI);
+
+    console.log(`Token URI for tokenId ${tokenId} is: ${actualTokenURI}`);
+  });
 });
