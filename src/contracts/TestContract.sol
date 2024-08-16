@@ -71,7 +71,7 @@ contract TestContract is ERC721URIStorage, Ownable {
         for (uint256 i = 0; i < amount; i++) {
             uint256 tokenId = totalSupply() + 1;
             _mint(msg.sender, tokenId);
-            _setTokenURI(tokenId, string(abi.encodePacked(baseTokenURI, Strings.toString(tokenId), ".json")));
+            _tokenIdCounter++;
         }
     }
 
@@ -85,8 +85,24 @@ contract TestContract is ERC721URIStorage, Ownable {
         return _tokenIdCounter;
     }
 
-    function _mint(address to, uint256 tokenId) internal override {
-        _tokenIdCounter += 1;
-        super._mint(to, tokenId);
+    /**
+     * @dev See {IERC721Metadata-tokenURI}.
+     */
+    function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
+        require(_exists(tokenId), "ERC721Metadata: URI query for nonexistent token");
+
+        string memory base = _baseURI();
+
+        // Concatenate baseURI + tokenId + ".json"
+        return string(abi.encodePacked(base, Strings.toString(tokenId), ".json"));
+    }
+
+    /**
+     * @dev Base URI for computing {tokenURI}. If set, the resulting URI for each
+     * token will be the concatenation of the `baseURI` and the `tokenId`. Empty
+     * by default, can be overridden in child contracts.
+     */
+    function _baseURI() internal view virtual override returns (string memory) {
+        return baseTokenURI;
     }
 }
