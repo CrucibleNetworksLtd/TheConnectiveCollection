@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.4;
+pragma solidity 0.8.20;
 
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -18,7 +18,7 @@ contract TestContract is ERC721URIStorage, Ownable {
     mapping(address => bool) public hasMintedFree;
     uint256 private _tokenIdCounter = 0;
 
-    constructor(string memory name, string memory symbol) ERC721(name, symbol) {}
+    constructor(string memory name, string memory symbol) Ownable(msg.sender) ERC721(name, symbol) {}
 
     function setMintingState(uint256 _state) external onlyOwner {
         mintingState = _state;
@@ -89,7 +89,7 @@ contract TestContract is ERC721URIStorage, Ownable {
      * @dev See {IERC721Metadata-tokenURI}.
      */
     function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
-        require(_exists(tokenId), "ERC721Metadata: URI query for nonexistent token");
+        require(_ownerOf(tokenId) != address(0), "ERC721Metadata: URI query for nonexistent token");
 
         string memory base = _baseURI();
 
