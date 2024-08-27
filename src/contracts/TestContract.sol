@@ -4,10 +4,11 @@ pragma solidity 0.8.20;
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/token/common/ERC2981.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "hardhat/console.sol";
 
-contract TestContract is ERC721URIStorage, Ownable {
+contract TestContract is ERC721URIStorage, ERC2981, Ownable {
     address public treasuryWallet;
     bytes32 public freeMerkleRoot;
     bytes32 public paidMerkleRoot;
@@ -21,6 +22,14 @@ contract TestContract is ERC721URIStorage, Ownable {
     uint16 private _tokenIdCounter = 0;
 
     constructor(string memory name, string memory symbol) Ownable(msg.sender) ERC721(name, symbol) {}
+
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721URIStorage, ERC2981) returns (bool) {
+        return super.supportsInterface(interfaceId);
+    }
+
+    function setDefaultRoyalties(address receiver, uint96 feeNumerator) external onlyOwner {
+        _setDefaultRoyalty(receiver, feeNumerator);
+    }
 
     function setTreasuryWallet(address _treasuryWallet) external onlyOwner {
         require(_treasuryWallet != address(0), "Invalid treasury address.");
