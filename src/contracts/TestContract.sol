@@ -11,8 +11,8 @@ contract TestContract is ERC721URIStorage, Ownable {
     bytes32 public freeMerkleRoot;
     bytes32 public paidMerkleRoot;
     uint256 public mintingState = 0;
-    uint256 public whitelistMintPrice = 0.02 ether;
-    uint256 public mintPrice = 0.03 ether;
+    uint256 public whitelistMintPrice = 20000000000000000; // 0.02 ether in wei
+    uint256 public mintPrice = 30000000000000000; // 0.03 ether in wei
     string private baseTokenURI;
     bool public mintingIsActive = false;
     mapping(address => bool) public hasMintedFree;
@@ -21,6 +21,7 @@ contract TestContract is ERC721URIStorage, Ownable {
     constructor(string memory name, string memory symbol) Ownable(msg.sender) ERC721(name, symbol) {}
 
     function setMintingState(uint256 _state) external onlyOwner {
+        require(_state >= 0 && _state < 3, "Invalid minting state");
         mintingState = _state;
     }
 
@@ -61,15 +62,13 @@ contract TestContract is ERC721URIStorage, Ownable {
             hasMintedFree[msg.sender] = true;
         } else if (mintingState == 1) {
             require(MerkleProof.verify(merkleProof, paidMerkleRoot, leaf), "Invalid proof for paid minting");
-            require(msg.value >= whitelistMintPrice * amount, "Insufficient funds for paid minting");
+            require(msg.value == whitelistMintPrice * amount, "Insufficient funds for paid minting");
         } else if (mintingState == 2) {
-            require(msg.value >= mintPrice * amount, "Insufficient funds for public minting");
-        } else {
-            revert("Invalid minting state");
+            require(msg.value == mintPrice * amount, "Insufficient funds for public minting");
         }
 
         for (uint256 i = 0; i < amount; i++) {
-            uint256 tokenId = totalSupply() + 1;
+            uint256 tokenId = _tokenIdCounter;
             _mint(msg.sender, tokenId);
             _tokenIdCounter++;
         }
