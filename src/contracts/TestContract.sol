@@ -19,7 +19,7 @@ contract TestContract is ERC721URIStorage, ERC2981, Ownable {
     string private baseTokenURI;
     bool public mintingIsActive = false;
     mapping(address => bool) public hasMintedFree;
-    uint16 private _tokenIdCounter = 0;
+    uint256 private _tokenIdCounter = 0;
 
     constructor(string memory name, string memory symbol) Ownable(msg.sender) ERC721(name, symbol) {}
 
@@ -68,7 +68,6 @@ contract TestContract is ERC721URIStorage, ERC2981, Ownable {
     function mint(uint16 amount, bytes32[] calldata merkleProof) external payable {
         require(mintingIsActive, "Minting is not active");
         require(amount > 0, "Must mint at least one token");
-        require(_tokenIdCounter < _maxSupply, "Minting maximum reached.");
         require(_tokenIdCounter + amount <= _maxSupply, "Minting amount exceeds maximum supply.");
 
         bytes32 leaf = keccak256(abi.encodePacked(msg.sender));
@@ -77,17 +76,17 @@ contract TestContract is ERC721URIStorage, ERC2981, Ownable {
             require(amount == 1, "Can only mint 1 token in Stage 0");
             require(!hasMintedFree[msg.sender], "Already minted in Stage 0");
             require(MerkleProof.verify(merkleProof, freeMerkleRoot, leaf), "Invalid proof for free minting");
+            require(msg.value == 0, "Incorrect funds for free minting");
             hasMintedFree[msg.sender] = true;
         } else if (mintingState == 1) {
             require(MerkleProof.verify(merkleProof, paidMerkleRoot, leaf), "Invalid proof for paid minting");
-            require(msg.value == whitelistMintPrice * amount, "Insufficient funds for paid minting");
+            require(msg.value == whitelistMintPrice * amount, "Incorrent funds for paid minting");
         } else if (mintingState == 2) {
-            require(msg.value == mintPrice * amount, "Insufficient funds for public minting");
+            require(msg.value == mintPrice * amount, "Incorrent funds for public minting");
         }
 
         for (uint16 i = 0; i < amount; i++) {
-            uint16 tokenId = _tokenIdCounter;
-            _mint(msg.sender, tokenId);
+            _mint(msg.sender, _tokenIdCounter);
             _tokenIdCounter++;
         }
     }

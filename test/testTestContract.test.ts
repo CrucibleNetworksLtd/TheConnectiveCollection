@@ -5,6 +5,7 @@ import {TestContract} from '../typechain/TestContract';
 import {MerkleTree} from 'merkletreejs';
 import keccak256 from 'keccak256';
 import {Test} from 'mocha';
+import { BigNumber } from 'ethers';
 
 const setup = deployments.createFixture(async () => {
   await deployments.fixture('TestContract');
@@ -48,10 +49,10 @@ describe('TestContract', function () {
       .withArgs(
         '0x0000000000000000000000000000000000000000',
         users[0].address,
-        1
+        0
       );
 
-    console.log('Owner of tokenId 1 is: ' + (await TestContract.ownerOf(1)));
+    console.log('Owner of tokenId 0 is: ' + (await TestContract.ownerOf(0)));
 
     // Test that a user not on the free whitelist cannot mint
     const invalidProof = freeMerkleTree.getHexProof(
@@ -92,6 +93,12 @@ describe('TestContract', function () {
       .withArgs(
         '0x0000000000000000000000000000000000000000',
         users[1].address,
+        0
+      )
+      .and.to.emit(TestContract, 'Transfer')
+      .withArgs(
+        '0x0000000000000000000000000000000000000000',
+        users[1].address,
         1
       )
       .and.to.emit(TestContract, 'Transfer')
@@ -99,21 +106,15 @@ describe('TestContract', function () {
         '0x0000000000000000000000000000000000000000',
         users[1].address,
         2
-      )
-      .and.to.emit(TestContract, 'Transfer')
-      .withArgs(
-        '0x0000000000000000000000000000000000000000',
-        users[1].address,
-        3
       );
 
     console.log(
       'Owner of tokenIds 1, 2, 3 is: ' +
+        (await TestContract.ownerOf(0)) +
+        ', ' +
         (await TestContract.ownerOf(1)) +
         ', ' +
-        (await TestContract.ownerOf(2)) +
-        ', ' +
-        (await TestContract.ownerOf(3))
+        (await TestContract.ownerOf(2))
     );
 
     // Test that a user not on the paid whitelist cannot mint
@@ -133,7 +134,7 @@ describe('TestContract', function () {
     await TestContract.setMintingState(2);
     await TestContract.toggleMintingIsActive();
 
-    const mintPrice = ethers.utils.parseEther('0.1');
+    const mintPrice = ethers.utils.parseEther('0.03');
     const amountToMint = 2;
     const totalPrice = mintPrice.mul(amountToMint);
 
@@ -144,20 +145,20 @@ describe('TestContract', function () {
       .withArgs(
         '0x0000000000000000000000000000000000000000',
         users[2].address,
-        1
+        0
       )
       .and.to.emit(TestContract, 'Transfer')
       .withArgs(
         '0x0000000000000000000000000000000000000000',
         users[2].address,
-        2
+        1
       );
 
     console.log(
       'Owner of tokenIds 1, 2 is: ' +
-        (await TestContract.ownerOf(1)) +
+        (await TestContract.ownerOf(0)) +
         ', ' +
-        (await TestContract.ownerOf(2))
+        (await TestContract.ownerOf(1))
     );
   });
 
@@ -166,41 +167,45 @@ describe('TestContract', function () {
 
     // Get the owner of the contract (the deployer)
     const [deployer] = await ethers.getSigners();
+    const treasuryAddress = users[1].address;
 
     await TestContract.setMintingState(2);
     await TestContract.toggleMintingIsActive();
 
-    const mintPrice = ethers.utils.parseEther('0.1');
+    const mintPrice = ethers.utils.parseEther('0.03');
     const amountToMint = 1;
     const totalPrice = mintPrice.mul(amountToMint);
 
     await users[2].TestContract.mint(amountToMint, [], {value: totalPrice});
 
-    const ownerBalanceBefore = await ethers.provider.getBalance(
-      deployer.address
+        // Non-owner tries to withdraw (should fail)
+    await expect(users[2].TestContract.withdraw()).to.be.revertedWith(
+      `OwnableUnauthorizedAccount`
     );
 
-    // Non-owner tries to withdraw (should fail)
-    await expect(users[1].TestContract.withdraw()).to.be.revertedWith(
-      'Ownable: caller is not the owner'
+    // Owner tries to withdraw without treasury (should fail)
+    await expect(TestContract.connect(deployer).withdraw()).to.be.revertedWith('Treasury not set')
+
+    // Owner can set treasury
+    await expect(TestContract.connect(deployer).setTreasuryWallet(treasuryAddress)).to.not.be.reverted
+
+    const treasuryBalanceBefore = await ethers.provider.getBalance(
+      treasuryAddress
     );
 
     // Owner withdraws
-    const tx = await TestContract.connect(deployer).withdraw();
-    const receipt = await tx.wait();
-    const gasUsed = receipt.gasUsed.mul(receipt.effectiveGasPrice);
+    await TestContract.connect(deployer).withdraw();
 
-    const ownerBalanceAfter = await ethers.provider.getBalance(
-      deployer.address
+    const treasuryBalanceAfter = await ethers.provider.getBalance(
+      treasuryAddress
     );
 
     // Use BigNumber arithmetic for comparison
-    const expectedBalanceAfter = ownerBalanceBefore
+    const expectedBalanceAfter = treasuryBalanceBefore
       .add(totalPrice)
-      .sub(gasUsed);
 
     // Ensure the balances are equal
-    expect(ownerBalanceAfter).to.equal(expectedBalanceAfter);
+    expect(treasuryBalanceAfter).to.equal(expectedBalanceAfter);
   });
 
   it('can set base URI and verify tokenURI', async function () {
@@ -214,15 +219,33 @@ describe('TestContract', function () {
     await TestContract.setMintingState(2);
     await TestContract.toggleMintingIsActive();
 
-    const mintPrice = ethers.utils.parseEther('0.1');
+    const mintPrice = ethers.utils.parseEther('0.03');
     await users[2].TestContract.mint(1, [], {value: mintPrice});
 
     // Verify the tokenURI
-    const tokenId = 1;
+    const tokenId = 0;
     const expectedTokenURI = `${baseURI}${tokenId}.json`;
     const actualTokenURI = await TestContract.tokenURI(tokenId);
     expect(actualTokenURI).to.equal(expectedTokenURI);
 
     console.log(`Token URI for tokenId ${tokenId} is: ${actualTokenURI}`);
+  });
+
+  it('owner can set default royalties', async function () {
+    const {users, TestContract} = await setup();
+
+    // Get the owner of the contract (the deployer)
+    const [deployer] = await ethers.getSigners();
+    const notOwner = users[1];
+
+    // Basis point
+    const fivePercent = 500
+
+    await expect(notOwner.TestContract.setDefaultRoyalties(notOwner.address,fivePercent)).to.be.revertedWith('OwnableUnauthorizedAccount');
+    await expect(TestContract.connect(deployer).setDefaultRoyalties(deployer.address,fivePercent)).to.not.be.reverted;
+    const royaltyInfo = await TestContract.royaltyInfo(0,1000)
+    expect(royaltyInfo[0]).to.equal(deployer.address)
+    expect(royaltyInfo[1]).to.equal(BigNumber.from(50))
+
   });
 });
