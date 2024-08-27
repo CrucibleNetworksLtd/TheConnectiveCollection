@@ -8,6 +8,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 import "hardhat/console.sol";
 
 contract TestContract is ERC721URIStorage, Ownable {
+    address public treasuryWallet;
     bytes32 public freeMerkleRoot;
     bytes32 public paidMerkleRoot;
     uint256 public mintingState = 0;
@@ -19,6 +20,11 @@ contract TestContract is ERC721URIStorage, Ownable {
     uint256 private _tokenIdCounter = 0;
 
     constructor(string memory name, string memory symbol) Ownable(msg.sender) ERC721(name, symbol) {}
+
+    function setTreasuryWallet(address _treasuryWallet) external onlyOwner {
+        require(_treasuryWallet != address(0), "Invalid treasury address.");
+        treasuryWallet = _treasuryWallet;
+    }
 
     function setMintingState(uint256 _state) external onlyOwner {
         require(_state >= 0 && _state < 3, "Invalid minting state");
@@ -75,9 +81,10 @@ contract TestContract is ERC721URIStorage, Ownable {
     }
 
     function withdraw() external onlyOwner {
+        require(treasuryWallet != address(0), "Treasury not set.");
         uint256 balance = address(this).balance;
         require(balance > 0, "No funds to withdraw");
-        payable(owner()).transfer(balance); // add treasury wallet
+        payable(treasuryWallet).transfer(balance); // add treasury wallet
     }
 
     function totalSupply() public view returns (uint256) {
