@@ -13,8 +13,8 @@ contract TestContract is ERC721URIStorage, ERC2981, Ownable {
     bytes32 public freeMerkleRoot;
     bytes32 public discountMerkleRoot;
 
-    enum MintingStage { FreeMint, DiscountMint, PublicMint }
-    MintingStage public mintingStage = MintingStage.FreeMint;
+    enum MintingPhase { FreeMint, DiscountMint, PublicMint }
+    MintingPhase public mintingPhase = MintingPhase.FreeMint;
 
     uint256 public discountMintPrice = 0.02 ether;
     uint256 public mintPrice = 0.03 ether;
@@ -42,9 +42,9 @@ contract TestContract is ERC721URIStorage, ERC2981, Ownable {
         treasuryWallet = _treasuryWallet;
     }
 
-    function advanceMintingStage() external onlyOwner {
-        require(mintingStage != MintingStage.PublicMint, "Already at final minting stage");
-        mintingStage = MintingStage(uint8(mintingStage) + 1);
+    function advanceMintingPhase() external onlyOwner {
+        require(mintingPhase != MintingPhase.PublicMint, "Already at final minting phase");
+        mintingPhase = MintingPhase(uint8(mintingPhase) + 1);
     }
 
     function setFreeMerkleRoot(bytes32 _merkleRoot) external onlyOwner {
@@ -71,43 +71,39 @@ contract TestContract is ERC721URIStorage, ERC2981, Ownable {
 
         bytes32 leaf = keccak256(abi.encodePacked(msg.sender));
 
-        if (mintingStage == MintingStage.FreeMint) {
-            require(amount == 1, "Can only mint 1 token in Stage 0");
+        if (mintingPhase == MintingPhase.FreeMint) {
+            require(amount == 1, "Can only mint 1 token in Phase 0");
             require(_freeMintingCounter < 1000, "Minting amount exceeds free minting limit.");
-            require(!hasMintedFree[msg.sender], "Already minted in Stage 0");
+            require(!hasMintedFree[msg.sender], "Already minted in Phase 0");
             require(MerkleProof.verify(merkleProof, freeMerkleRoot, leaf), "Invalid proof for free minting");
             require(msg.value == 0, "Incorrect funds for free minting");
             hasMintedFree[msg.sender] = true;
             _freeMintingCounter++;
-        } else if (mintingStage == MintingStage.DiscountMint) {
+        } else if (mintingPhase == MintingPhase.DiscountMint) {
             require(_discountMintingCounter + amount <= 750, "Minting amount exceeds discount limit.");
             require(MerkleProof.verify(merkleProof, discountMerkleRoot, leaf), "Invalid proof for discount minting");
             require(msg.value == discountMintPrice * amount, "Incorrect funds for discount minting");
             _discountMintingCounter += amount;
-        } else if (mintingStage == MintingStage.PublicMint) {
+        } else if (mintingPhase == MintingPhase.PublicMint) {
             require(msg.value == mintPrice * amount, "Incorrect funds for public minting");
         }
 
         for (uint16 i = 0; i < amount; ) {
             _tokenIdCounter++;
             _mint(msg.sender, _tokenIdCounter);
-            unchecked {
-                i++;
-            }
+            i++;
         }
     }
 
     function ownerMint(uint16 amount) external onlyOwner {
         require(amount > 0, "Must mint at least one token");
-        require(mintingStage == MintingStage.PublicMint, "Owner minting is only available in Stage 2");
+        require(mintingPhase == MintingPhase.PublicMint, "Owner minting is only available in Phase 2");
         require(_tokenIdCounter + amount <= _maxSupply, "Minting amount exceeds maximum supply.");
 
         for (uint16 i = 0; i < amount; ) {
             _tokenIdCounter++;
             _mint(msg.sender, _tokenIdCounter);
-            unchecked {
-                i++;
-            }
+            i++;
         }
     }
 
