@@ -29,7 +29,7 @@ const generateMerkleTree = (addresses: string[]) => {
 };
 
 describe('TestContract', function() {
-  it('can mint 1 token for free (Stage 0)', async function() {
+  it('should allow minting 1 token for free in Free Minting Phase', async function() {
     const { users, TestContract } = await setup();
 
     const freeWhitelist = [users[0].address];
@@ -41,7 +41,6 @@ describe('TestContract', function() {
     const leaf = keccak256(users[0].address);
     const proof = freeMerkleTree.getHexProof(leaf);
 
-    await TestContract.setMintingState(0);
     await TestContract.toggleMintingIsActive();
 
     await expect(users[0].TestContract.mint(1, proof, { value: 0 }))
@@ -52,8 +51,6 @@ describe('TestContract', function() {
         expectedTokenId
       );
 
-    console.log(`Owner of tokenId ${expectedTokenId} is: ` + (await TestContract.ownerOf(expectedTokenId)));
-
     // Test that a user not on the free whitelist cannot mint
     const invalidProof = freeMerkleTree.getHexProof(
       keccak256(users[1].address)
@@ -62,24 +59,24 @@ describe('TestContract', function() {
       users[1].TestContract.mint(1, invalidProof, { value: 0 })
     ).to.be.revertedWith('Invalid proof for free minting');
 
-    // Test that a user cannot mint more than 1 token in Stage 0
+    // Test that a user cannot mint more than 1 token in Phase 0
     await expect(
       users[0].TestContract.mint(2, proof, { value: 0 })
-    ).to.be.revertedWith('Can only mint 1 token in Stage 0');
+    ).to.be.revertedWith('Can only mint 1 token in Phase 0');
   });
 
-  it('can mint multiple tokens for a price (Stage 1)', async function() {
+  it('should allow minting multiple tokens for a discounted price (Discount Phase)', async function() {
     const { users, TestContract } = await setup();
 
-    const paidWhitelist = [users[1].address];
-    const paidMerkleTree = generateMerkleTree(paidWhitelist);
-    const paidMerkleRoot = paidMerkleTree.getRoot().toString('hex');
-    await TestContract.setPaidMerkleRoot('0x' + paidMerkleRoot);
+    const discountWhitelist = [users[1].address];
+    const discountMerkleTree = generateMerkleTree(discountWhitelist);
+    const discountMerkleRoot = discountMerkleTree.getRoot().toString('hex');
+    await TestContract.setDiscountMerkleRoot('0x' + discountMerkleRoot);
 
     const leaf = keccak256(users[1].address);
-    const proof = paidMerkleTree.getHexProof(leaf);
+    const proof = discountMerkleTree.getHexProof(leaf);
 
-    await TestContract.setMintingState(1);
+    await TestContract.advanceMintingPhase();
     await TestContract.toggleMintingIsActive();
 
     const mintPrice = ethers.utils.parseEther('0.02');
@@ -108,30 +105,22 @@ describe('TestContract', function() {
         3
       );
 
-    console.log(
-      'Owner of tokenIds 1, 2, 3 is: ' +
-      (await TestContract.ownerOf(1)) +
-      ', ' +
-      (await TestContract.ownerOf(2)) +
-      ', ' +
-      (await TestContract.ownerOf(3))
-    );
-
-    // Test that a user not on the paid whitelist cannot mint
-    const invalidProof = paidMerkleTree.getHexProof(
+    // Test that a user not on the discount whitelist cannot mint
+    const invalidProof = discountMerkleTree.getHexProof(
       keccak256(users[0].address)
     );
     await expect(
       users[0].TestContract.mint(amountToMint, invalidProof, {
         value: totalPrice,
       })
-    ).to.be.revertedWith('Invalid proof for paid minting');
+    ).to.be.revertedWith('Invalid proof for discount minting');
   });
 
-  it('anyone can mint multiple tokens for a price (Stage 2)', async function() {
+  it('should allow anyone to mint multiple tokens for the full price (Open Phase)', async function() {
     const { users, TestContract } = await setup();
 
-    await TestContract.setMintingState(2);
+    await TestContract.advanceMintingPhase();
+    await TestContract.advanceMintingPhase();
     await TestContract.toggleMintingIsActive();
 
     const mintPrice = ethers.utils.parseEther('0.03');
@@ -153,23 +142,17 @@ describe('TestContract', function() {
         users[2].address,
         2
       );
-
-    console.log(
-      'Owner of tokenIds 1, 2 is: ' +
-      (await TestContract.ownerOf(1)) +
-      ', ' +
-      (await TestContract.ownerOf(2))
-    );
   });
 
-  it('only the owner can withdraw funds', async function() {
+  it('should allow only the owner to withdraw funds', async function() {
     const { users, TestContract } = await setup();
 
     // Get the owner of the contract (the deployer)
     const [deployer] = await ethers.getSigners();
     const treasuryAddress = users[1].address;
 
-    await TestContract.setMintingState(2);
+    await TestContract.advanceMintingPhase();
+    await TestContract.advanceMintingPhase();
     await TestContract.toggleMintingIsActive();
 
     const mintPrice = ethers.utils.parseEther('0.03');
@@ -208,7 +191,7 @@ describe('TestContract', function() {
     expect(treasuryBalanceAfter).to.equal(expectedBalanceAfter);
   });
 
-  it('can set base URI and verify tokenURI', async function() {
+  it('should allow to set base URI and verify tokenURI', async function() {
     const { users, TestContract } = await setup();
 
     // Set base URI
@@ -216,7 +199,8 @@ describe('TestContract', function() {
     await TestContract.setBaseURI(baseURI);
 
     // Mint a token to check the tokenURI
-    await TestContract.setMintingState(2);
+    await TestContract.advanceMintingPhase();
+    await TestContract.advanceMintingPhase();
     await TestContract.toggleMintingIsActive();
 
     const mintPrice = ethers.utils.parseEther('0.03');
@@ -227,11 +211,9 @@ describe('TestContract', function() {
     const expectedTokenURI = `${baseURI}${tokenId}.json`;
     const actualTokenURI = await TestContract.tokenURI(tokenId);
     expect(actualTokenURI).to.equal(expectedTokenURI);
-
-    console.log(`Token URI for tokenId ${tokenId} is: ${actualTokenURI}`);
   });
 
-  it('owner can set default royalties', async function() {
+  it('shouwl allow the owner to set default royalties', async function() {
     const { users, TestContract } = await setup();
 
     // Get the owner of the contract (the deployer)
@@ -248,26 +230,19 @@ describe('TestContract', function() {
     expect(royaltyInfo[1]).to.equal(BigNumber.from(50))
 
   });
-  it('should allow to mint up to maxium', async function() {
+  it('should allow to open minting up to maxium', async function() {
     const { users, TestContract } = await setup();
 
-    const paidWhitelist = [users[1].address];
-    const paidMerkleTree = generateMerkleTree(paidWhitelist);
-    const paidMerkleRoot = paidMerkleTree.getRoot().toString('hex');
-    await TestContract.setPaidMerkleRoot('0x' + paidMerkleRoot);
-
-    const leaf = keccak256(users[1].address);
-    const proof = paidMerkleTree.getHexProof(leaf);
-
-    await TestContract.setMintingState(1);
+    await TestContract.advanceMintingPhase();
+    await TestContract.advanceMintingPhase();
     await TestContract.toggleMintingIsActive();
 
-    const mintPrice = ethers.utils.parseEther('0.02');
+    const mintPrice = ethers.utils.parseEther('0.03');
     const amountToMint = 625;
     const totalPrice = mintPrice.mul(amountToMint);
 
     await expect(
-      users[1].TestContract.mint(amountToMint, proof, { value: totalPrice })
+      users[1].TestContract.mint(amountToMint, [], { value: totalPrice })
     )
       .to.emit(TestContract, 'Transfer')
       .withArgs(
@@ -276,7 +251,7 @@ describe('TestContract', function() {
         625
       );
     await expect(
-      users[1].TestContract.mint(amountToMint, proof, { value: totalPrice })
+      users[1].TestContract.mint(amountToMint, [], { value: totalPrice })
     )
       .to.emit(TestContract, 'Transfer')
       .withArgs(
@@ -285,7 +260,7 @@ describe('TestContract', function() {
         1250
       );
     await expect(
-      users[1].TestContract.mint(amountToMint, proof, { value: totalPrice })
+      users[1].TestContract.mint(amountToMint, [], { value: totalPrice })
     )
       .to.emit(TestContract, 'Transfer')
       .withArgs(
@@ -294,7 +269,7 @@ describe('TestContract', function() {
         1875
       );
     await expect(
-      users[1].TestContract.mint(amountToMint, proof, { value: totalPrice })
+      users[1].TestContract.mint(amountToMint, [], { value: totalPrice })
     )
       .to.emit(TestContract, 'Transfer')
       .withArgs(
@@ -303,10 +278,166 @@ describe('TestContract', function() {
         2500
       );
     await expect(
-      users[1].TestContract.mint(1, proof, { value: mintPrice })
+      users[1].TestContract.mint(1, [], { value: mintPrice })
     )
       .to.revertedWith('Minting amount exceeds maximum supply');
-      expect(await users[1].TestContract.totalSupply()).to.equal(2500);
+    expect(await users[1].TestContract.totalSupply()).to.equal(2500);
 
   });
+
+  it('should allow discount minting up to discount minting maxium', async function() {
+    const { users, TestContract } = await setup();
+    const discountWhitelist = [users[1].address];
+    const discountMintingBatchAmount = 375;
+    const discountMerkleTree = generateMerkleTree(discountWhitelist);
+    const discountMerkleRoot = discountMerkleTree.getRoot().toString('hex');
+    await TestContract.setDiscountMerkleRoot('0x' + discountMerkleRoot);
+
+    const leaf = keccak256(users[1].address);
+    const discountProof = discountMerkleTree.getHexProof(leaf);
+    await TestContract.advanceMintingPhase();
+    await TestContract.toggleMintingIsActive();
+
+    const discountTotalSupply = 750;
+
+    const discountMintingPrice = ethers.utils.parseEther('0.02');
+
+    await expect(
+      users[1].TestContract.mint(discountMintingBatchAmount, discountProof, { value: discountMintingPrice.mul(discountMintingBatchAmount) })
+    )
+      .to.emit(TestContract, 'Transfer')
+      .withArgs(
+        '0x0000000000000000000000000000000000000000',
+        users[1].address,
+        discountMintingBatchAmount
+      );
+    await expect(
+      users[1].TestContract.mint(discountMintingBatchAmount, discountProof, { value: discountMintingPrice.mul(discountMintingBatchAmount) })
+    )
+      .to.emit(TestContract, 'Transfer')
+      .withArgs(
+        '0x0000000000000000000000000000000000000000',
+        users[1].address,
+        2 * discountMintingBatchAmount
+      );
+    await expect(
+      users[1].TestContract.mint(discountMintingBatchAmount, discountProof, { value: discountMintingPrice.mul(discountMintingBatchAmount) })
+    ).to.revertedWith('Minting amount exceeds discount limit');
+    expect(await users[2].TestContract.totalSupply()).to.equal(discountTotalSupply);
+
+  });
+
+  it('should allow open minting up to leftover minting maxium', async function() {
+    const { users, TestContract } = await setup();
+
+    const freeWhitelist = [users[0].address];
+    const freeMintingAmount = 1
+    const discountWhitelist = [users[1].address];
+    const discountMintingBatchAmount = 375;
+    const openMintingBatchAmount = 583; // (2500 -2*750 -1) / 3
+    const freeMerkleTree = generateMerkleTree(freeWhitelist);
+    const freeMerkleRoot = freeMerkleTree.getRoot().toString('hex');
+    const discountMerkleTree = generateMerkleTree(discountWhitelist);
+    const discountMerkleRoot = discountMerkleTree.getRoot().toString('hex');
+    await TestContract.setFreeMerkleRoot('0x' + freeMerkleRoot);
+    await TestContract.setDiscountMerkleRoot('0x' + discountMerkleRoot);
+
+    const leaf = keccak256(users[0].address);
+    const freeProof = freeMerkleTree.getHexProof(leaf);
+    const discountProof = discountMerkleTree.getHexProof(leaf);
+    await TestContract.toggleMintingIsActive();
+
+    const totalSupply = 2500;
+
+    const discountMintingPrice = ethers.utils.parseEther('0.02');
+    const openMintingPrice = ethers.utils.parseEther('0.03');
+
+    await expect(
+      users[0].TestContract.mint(freeMintingAmount, freeProof, { value: 0 })
+    )
+      .to.emit(TestContract, 'Transfer')
+      .withArgs(
+        '0x0000000000000000000000000000000000000000',
+        users[0].address,
+        freeMintingAmount
+      );
+
+    await TestContract.advanceMintingPhase();
+
+    await expect(
+      users[1].TestContract.mint(discountMintingBatchAmount, discountProof, { value: discountMintingPrice.mul(discountMintingBatchAmount) })
+    )
+      .to.emit(TestContract, 'Transfer')
+      .withArgs(
+        '0x0000000000000000000000000000000000000000',
+        users[1].address,
+        discountMintingBatchAmount + freeMintingAmount
+      );
+    await expect(
+      users[1].TestContract.mint(discountMintingBatchAmount, discountProof, { value: discountMintingPrice.mul(discountMintingBatchAmount) })
+    )
+      .to.emit(TestContract, 'Transfer')
+      .withArgs(
+        '0x0000000000000000000000000000000000000000',
+        users[1].address,
+        2 * discountMintingBatchAmount + freeMintingAmount
+      );
+
+    TestContract.advanceMintingPhase();
+
+    await expect(
+      users[2].TestContract.mint(openMintingBatchAmount, discountProof, { value: openMintingPrice.mul(openMintingBatchAmount) })
+    )
+      .to.emit(TestContract, 'Transfer')
+      .withArgs(
+        '0x0000000000000000000000000000000000000000',
+        users[2].address,
+        openMintingBatchAmount + 2 * discountMintingBatchAmount + freeMintingAmount
+      );
+    await expect(
+      users[2].TestContract.mint(openMintingBatchAmount, discountProof, { value: openMintingPrice.mul(openMintingBatchAmount) })
+    )
+      .to.emit(TestContract, 'Transfer')
+      .withArgs(
+        '0x0000000000000000000000000000000000000000',
+        users[2].address,
+        2 * openMintingBatchAmount + 2 * discountMintingBatchAmount + freeMintingAmount
+      );
+    await expect(
+      users[2].TestContract.mint(openMintingBatchAmount, discountProof, { value: openMintingPrice.mul(openMintingBatchAmount) })
+    )
+      .to.emit(TestContract, 'Transfer')
+      .withArgs(
+        '0x0000000000000000000000000000000000000000',
+        users[2].address,
+        3 * openMintingBatchAmount + 2 * discountMintingBatchAmount + freeMintingAmount
+      );
+
+    await expect(
+      users[2].TestContract.mint(1, [], { value: openMintingPrice })
+    )
+      .to.revertedWith('Minting amount exceeds maximum supply');
+    expect(await users[2].TestContract.totalSupply()).to.equal(totalSupply);
+  });
+
+});
+it('should allow owner to mint for free in phase 2', async function() {
+    const { TestContract } = await setup();
+
+    const [deployer] = await ethers.getSigners();
+    await TestContract.toggleMintingIsActive();
+    await expect(TestContract.connect(deployer).ownerMint(1))
+      .to.revertedWith('Owner minting is only available in Phase 2');
+    await TestContract.advanceMintingPhase();
+    await expect(TestContract.connect(deployer).ownerMint(1))
+      .to.revertedWith('Owner minting is only available in Phase 2');
+    await TestContract.advanceMintingPhase();
+    await expect(TestContract.connect(deployer).ownerMint(2))
+      .to.emit(TestContract, 'Transfer')
+      .withArgs(
+        '0x0000000000000000000000000000000000000000',
+        deployer.address,
+        2
+      );
+
 });

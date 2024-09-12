@@ -11,15 +11,21 @@ import "hardhat/console.sol";
 contract TestContract is ERC721URIStorage, ERC2981, Ownable {
     address public treasuryWallet;
     bytes32 public freeMerkleRoot;
-    bytes32 public paidMerkleRoot;
-    uint8 public mintingState = 0;
-    uint256 public whitelistMintPrice = 20000000000000000; // 0.02 ether in wei
-    uint256 public mintPrice = 30000000000000000; // 0.03 ether in wei
-    uint16 private _maxSupply = 2500;
+    bytes32 public discountMerkleRoot;
+
+    enum MintingPhase { FreeMint, DiscountMint, PublicMint }
+    MintingPhase public mintingPhase = MintingPhase.FreeMint;
+
+    uint256 public discountMintPrice = 0.02 ether;
+    uint256 public mintPrice = 0.03 ether;
+    uint16 internal _maxSupply = 2500;
     string private baseTokenURI;
     bool public mintingIsActive = false;
     mapping(address => bool) public hasMintedFree;
-    uint256 private _tokenIdCounter = 0;
+
+    uint256 internal _tokenIdCounter = 0;
+    uint16 internal _freeMintingCounter = 0;
+    uint16 internal _discountMintingCounter = 0;
 
     constructor(string memory name, string memory symbol) Ownable(msg.sender) ERC721(name, symbol) {}
 
@@ -36,28 +42,21 @@ contract TestContract is ERC721URIStorage, ERC2981, Ownable {
         treasuryWallet = _treasuryWallet;
     }
 
-    function setMintingState(uint8 _state) external onlyOwner {
-        require(_state >= 0 && _state < 3, "Invalid minting state");
-        mintingState = _state;
+    function advanceMintingPhase() external onlyOwner {
+        require(mintingPhase != MintingPhase.PublicMint, "Already at final minting phase");
+        mintingPhase = MintingPhase(uint8(mintingPhase) + 1);
     }
 
     function setFreeMerkleRoot(bytes32 _merkleRoot) external onlyOwner {
         freeMerkleRoot = _merkleRoot;
     }
 
-    function setPaidMerkleRoot(bytes32 _merkleRoot) external onlyOwner {
-        paidMerkleRoot = _merkleRoot;
-    }
-
-    function setWhitelistMintPrice(uint256 _price) external onlyOwner {
-        whitelistMintPrice = _price;
-    }
-
-    function setMintPrice(uint256 _price) external onlyOwner {
-        mintPrice = _price;
+    function setDiscountMerkleRoot(bytes32 _merkleRoot) external onlyOwner {
+        discountMerkleRoot = _merkleRoot;
     }
 
     function setBaseURI(string memory baseURI) external onlyOwner {
+        require(bytes(baseURI).length > 0, "Base URI cannot be empty.");
         baseTokenURI = baseURI;
     }
 
@@ -72,22 +71,39 @@ contract TestContract is ERC721URIStorage, ERC2981, Ownable {
 
         bytes32 leaf = keccak256(abi.encodePacked(msg.sender));
 
-        if (mintingState == 0) {
-            require(amount == 1, "Can only mint 1 token in Stage 0");
-            require(!hasMintedFree[msg.sender], "Already minted in Stage 0");
+        if (mintingPhase == MintingPhase.FreeMint) {
+            require(amount == 1, "Can only mint 1 token in Phase 0");
+            require(_freeMintingCounter < 1000, "Minting amount exceeds free minting limit.");
+            require(!hasMintedFree[msg.sender], "Already minted in Phase 0");
             require(MerkleProof.verify(merkleProof, freeMerkleRoot, leaf), "Invalid proof for free minting");
             require(msg.value == 0, "Incorrect funds for free minting");
             hasMintedFree[msg.sender] = true;
-        } else if (mintingState == 1) {
-            require(MerkleProof.verify(merkleProof, paidMerkleRoot, leaf), "Invalid proof for paid minting");
-            require(msg.value == whitelistMintPrice * amount, "Incorrent funds for paid minting");
-        } else if (mintingState == 2) {
-            require(msg.value == mintPrice * amount, "Incorrent funds for public minting");
+            _freeMintingCounter++;
+        } else if (mintingPhase == MintingPhase.DiscountMint) {
+            require(_discountMintingCounter + amount <= 750, "Minting amount exceeds discount limit.");
+            require(MerkleProof.verify(merkleProof, discountMerkleRoot, leaf), "Invalid proof for discount minting");
+            require(msg.value == discountMintPrice * amount, "Incorrect funds for discount minting");
+            _discountMintingCounter += amount;
+        } else if (mintingPhase == MintingPhase.PublicMint) {
+            require(msg.value == mintPrice * amount, "Incorrect funds for public minting");
         }
 
-        for (uint16 i = 0; i < amount; i++) {
+        for (uint16 i = 0; i < amount; ) {
             _tokenIdCounter++;
             _mint(msg.sender, _tokenIdCounter);
+            i++;
+        }
+    }
+
+    function ownerMint(uint16 amount) external onlyOwner {
+        require(amount > 0, "Must mint at least one token");
+        require(mintingPhase == MintingPhase.PublicMint, "Owner minting is only available in Phase 2");
+        require(_tokenIdCounter + amount <= _maxSupply, "Minting amount exceeds maximum supply.");
+
+        for (uint16 i = 0; i < amount; ) {
+            _tokenIdCounter++;
+            _mint(msg.sender, _tokenIdCounter);
+            i++;
         }
     }
 
@@ -102,24 +118,14 @@ contract TestContract is ERC721URIStorage, ERC2981, Ownable {
         return _tokenIdCounter;
     }
 
-    /**
-     * @dev See {IERC721Metadata-tokenURI}.
-     */
     function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
-        require(_ownerOf(tokenId) != address(0), "ERC721Metadata: URI query for nonexistent token");
-
+        require(ownerOf(tokenId) != address(0), "ERC721Metadata: URI query for nonexistent token");
         string memory base = _baseURI();
-
-        // Concatenate baseURI + tokenId + ".json"
         return string(abi.encodePacked(base, Strings.toString(tokenId), ".json"));
     }
 
-    /**
-     * @dev Base URI for computing {tokenURI}. If set, the resulting URI for each
-     * token will be the concatenation of the `baseURI` and the `tokenId`. Empty
-     * by default, can be overridden in child contracts.
-     */
     function _baseURI() internal view virtual override returns (string memory) {
         return baseTokenURI;
     }
 }
+
