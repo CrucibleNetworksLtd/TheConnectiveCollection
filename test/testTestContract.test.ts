@@ -68,7 +68,7 @@ describe('TestContract', function() {
   it('should allow minting multiple tokens for a discounted price (Discount Phase)', async function() {
     const { users, TestContract } = await setup();
 
-    const discountWhitelist = [users[1].address];
+    const discountWhitelist = [users[1].address, users[2].address];
     const discountMerkleTree = generateMerkleTree(discountWhitelist);
     const discountMerkleRoot = discountMerkleTree.getRoot().toString('hex');
     await TestContract.setDiscountMerkleRoot('0x' + discountMerkleRoot);
@@ -106,11 +106,21 @@ describe('TestContract', function() {
       );
 
     // Test that a user not on the discount whitelist cannot mint
-    const invalidProof = discountMerkleTree.getHexProof(
-      keccak256(users[0].address)
+    let validProof = discountMerkleTree.getHexProof(
+      keccak256(users[1].address)
     );
     await expect(
-      users[0].TestContract.mint(amountToMint, invalidProof, {
+      users[0].TestContract.mint(amountToMint, validProof, {
+        value: totalPrice,
+      })
+    ).to.be.revertedWith('Invalid proof for discount minting');
+
+    // Test that a user not on the discount whitelist cannot mint with anothers proof
+    validProof = discountMerkleTree.getHexProof(
+      keccak256(users[2].address)
+    );
+    await expect(
+      users[1].TestContract.mint(amountToMint, validProof, {
         value: totalPrice,
       })
     ).to.be.revertedWith('Invalid proof for discount minting');
@@ -287,7 +297,7 @@ describe('TestContract', function() {
 
   it('should allow discount minting up to discount minting maxium', async function() {
     const { users, TestContract } = await setup();
-    const discountWhitelist = [users[1].address];
+    const discountWhitelist = [users[1].address, users[2].address];
     const discountMintingBatchAmount = 375;
     const discountMerkleTree = generateMerkleTree(discountWhitelist);
     const discountMerkleRoot = discountMerkleTree.getRoot().toString('hex');
@@ -332,7 +342,7 @@ describe('TestContract', function() {
 
     const freeWhitelist = [users[0].address];
     const freeMintingAmount = 1
-    const discountWhitelist = [users[1].address];
+    const discountWhitelist = [users[1].address, users[2].address];
     const discountMintingBatchAmount = 375;
     const openMintingBatchAmount = 583; // (2500 -2*750 -1) / 3
     const freeMerkleTree = generateMerkleTree(freeWhitelist);
@@ -342,9 +352,10 @@ describe('TestContract', function() {
     await TestContract.setFreeMerkleRoot('0x' + freeMerkleRoot);
     await TestContract.setDiscountMerkleRoot('0x' + discountMerkleRoot);
 
-    const leaf = keccak256(users[0].address);
-    const freeProof = freeMerkleTree.getHexProof(leaf);
-    const discountProof = discountMerkleTree.getHexProof(leaf);
+    const freeLeaf = keccak256(users[0].address);
+    const discountLeaf = keccak256(users[1].address);
+    const freeProof = freeMerkleTree.getHexProof(freeLeaf);
+    const discountProof = discountMerkleTree.getHexProof(discountLeaf);
     await TestContract.toggleMintingIsActive();
 
     const totalSupply = 2500;
@@ -386,7 +397,7 @@ describe('TestContract', function() {
     TestContract.advanceMintingPhase();
 
     await expect(
-      users[2].TestContract.mint(openMintingBatchAmount, discountProof, { value: openMintingPrice.mul(openMintingBatchAmount) })
+      users[2].TestContract.mint(openMintingBatchAmount, [], { value: openMintingPrice.mul(openMintingBatchAmount) })
     )
       .to.emit(TestContract, 'Transfer')
       .withArgs(
@@ -395,7 +406,7 @@ describe('TestContract', function() {
         openMintingBatchAmount + 2 * discountMintingBatchAmount + freeMintingAmount
       );
     await expect(
-      users[2].TestContract.mint(openMintingBatchAmount, discountProof, { value: openMintingPrice.mul(openMintingBatchAmount) })
+      users[2].TestContract.mint(openMintingBatchAmount, [], { value: openMintingPrice.mul(openMintingBatchAmount) })
     )
       .to.emit(TestContract, 'Transfer')
       .withArgs(
@@ -404,7 +415,7 @@ describe('TestContract', function() {
         2 * openMintingBatchAmount + 2 * discountMintingBatchAmount + freeMintingAmount
       );
     await expect(
-      users[2].TestContract.mint(openMintingBatchAmount, discountProof, { value: openMintingPrice.mul(openMintingBatchAmount) })
+      users[2].TestContract.mint(openMintingBatchAmount, [], { value: openMintingPrice.mul(openMintingBatchAmount) })
     )
       .to.emit(TestContract, 'Transfer')
       .withArgs(
@@ -419,9 +430,7 @@ describe('TestContract', function() {
       .to.revertedWith('Minting amount exceeds maximum supply');
     expect(await users[2].TestContract.totalSupply()).to.equal(totalSupply);
   });
-
-});
-it('should allow owner to mint for free in phase 2', async function() {
+  it('should allow owner to mint for free in phase 2', async function() {
     const { TestContract } = await setup();
 
     const [deployer] = await ethers.getSigners();
@@ -439,5 +448,6 @@ it('should allow owner to mint for free in phase 2', async function() {
         deployer.address,
         2
       );
-
+  });
 });
+
