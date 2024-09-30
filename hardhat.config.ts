@@ -25,7 +25,7 @@ const config: HardhatUserConfig = {
     hardhat: {},
     localhost: {
       url: node_url('localhost'),
-      accounts: accounts(),
+      accounts: accounts('localhost'),
     },
     staging: {
       url: node_url('rinkeby'),

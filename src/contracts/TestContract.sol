@@ -13,7 +13,11 @@ contract TestContract is ERC721URIStorage, ERC2981, Ownable {
     bytes32 public freeMerkleRoot;
     bytes32 public discountMerkleRoot;
 
-    enum MintingPhase { FreeMint, DiscountMint, PublicMint }
+    enum MintingPhase {
+        FreeMint,
+        DiscountMint,
+        PublicMint
+    }
     MintingPhase public mintingPhase = MintingPhase.FreeMint;
 
     uint256 public discountMintPrice = 0.02 ether;
@@ -29,7 +33,9 @@ contract TestContract is ERC721URIStorage, ERC2981, Ownable {
 
     constructor(string memory name, string memory symbol) Ownable(msg.sender) ERC721(name, symbol) {}
 
-    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721URIStorage, ERC2981) returns (bool) {
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view virtual override(ERC721URIStorage, ERC2981) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 
@@ -111,7 +117,9 @@ contract TestContract is ERC721URIStorage, ERC2981, Ownable {
         require(treasuryWallet != address(0), "Treasury not set.");
         uint256 balance = address(this).balance;
         require(balance > 0, "No funds to withdraw");
-        payable(treasuryWallet).transfer(balance);
+
+        (bool success, ) = treasuryWallet.call{value: balance}("");
+        require(success, "Transfer failed.");
     }
 
     function totalSupply() public view returns (uint256) {
@@ -128,4 +136,3 @@ contract TestContract is ERC721URIStorage, ERC2981, Ownable {
         return baseTokenURI;
     }
 }
-
