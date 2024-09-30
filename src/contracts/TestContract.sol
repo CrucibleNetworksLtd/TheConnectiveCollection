@@ -96,7 +96,7 @@ contract TestContract is ERC721URIStorage, ERC2981, Ownable {
 
         for (uint16 i = 0; i < amount; ) {
             _tokenIdCounter++;
-            _mint(msg.sender, _tokenIdCounter);
+            _safeMint(msg.sender, _tokenIdCounter);
             i++;
         }
     }
