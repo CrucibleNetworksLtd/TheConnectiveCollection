@@ -12,6 +12,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     from: deployer,
     log: true,
     args: ['Sample Name', 'SN'],
+    // gasLimit: 6000000,
   });
 };
 export default func;
