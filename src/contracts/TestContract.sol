@@ -26,6 +26,7 @@ contract TestContract is ERC721URIStorage, ERC2981, Ownable {
     string private baseTokenURI;
     bool public mintingIsActive = false;
     mapping(address => bool) public hasMintedFree;
+    mapping(address => bool) public hasMintedDiscount;
 
     uint256 internal _tokenIdCounter = 0;
     uint16 internal _freeMintingCounter = 0;
@@ -86,9 +87,12 @@ contract TestContract is ERC721URIStorage, ERC2981, Ownable {
             hasMintedFree[msg.sender] = true;
             _freeMintingCounter++;
         } else if (mintingPhase == MintingPhase.DiscountMint) {
-            require(_discountMintingCounter + amount <= 750, "Minting amount exceeds discount limit.");
             require(MerkleProof.verify(merkleProof, discountMerkleRoot, leaf), "Invalid proof for discount minting");
+            require(amount == 1, "Can only mint 1 token in Phase 1");
+            require(!hasMintedDiscount[msg.sender], "Already minted in Phase 1");
+            require(_discountMintingCounter + amount <= 750, "Minting amount exceeds discount limit.");
             require(msg.value == discountMintPrice * amount, "Incorrect funds for discount minting");
+            hasMintedDiscount[msg.sender] = true;
             _discountMintingCounter += amount;
         } else if (mintingPhase == MintingPhase.PublicMint) {
             require(msg.value == mintPrice * amount, "Incorrect funds for public minting");
