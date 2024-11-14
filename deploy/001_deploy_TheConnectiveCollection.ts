@@ -10,7 +10,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   await deploy('TheConnectiveCollection', {
     from: deployer,
     log: true,
-    args: ['The Connective Collection', 'TCC'],
+    args: ['The Connective: Avatars', 'CNA'],
   });
 };
 export default func;
