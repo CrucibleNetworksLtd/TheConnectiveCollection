@@ -1,12 +1,10 @@
 {
-  "name": "template-ethereum-contracts",
+  "name": "TheConnectiveCollection",
   "version": "0.1.0",
-  "description": "Template to develop ethereum smart contracts",
+  "description": "The Connective Collection NFT project",
   "engines": {
     "node": ">= 12.18.0"
   },
-  "repository": "github:wighawag/template-ethereum-contracts",
-  "author": "wighawag",
   "license": "MIT",
   "keywords": [
     "ethereum",

@@ -1,6 +1,4 @@
-# Boilerplate for ethereum solidity smart contract development.
-
-Based in https://github.com/wighawag/template-ethereum-contracts
+# The Connective Collection Smart Contract
 
 ## INSTALL
 
