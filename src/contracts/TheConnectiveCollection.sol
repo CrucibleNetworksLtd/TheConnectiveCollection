@@ -6,9 +6,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/token/common/ERC2981.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
-import "hardhat/console.sol";
 
-contract TestContract is ERC721URIStorage, ERC2981, Ownable {
+contract TheConnectiveCollection is ERC721URIStorage, ERC2981, Ownable {
     address public treasuryWallet;
     bytes32 public freeMerkleRoot;
     bytes32 public discountMerkleRoot;
